@@ -3,13 +3,13 @@ musicburst
 ==========
 
 
-Add a short description here!
+This package is processes data about the MUSICBURST tier in EAF files.
 
 
 Description
 ===========
 
-A longer description of your project goes here...
+When I've got more detail about how this works, I'll put it here.
 
 
 .. _pyscaffold-notes:
