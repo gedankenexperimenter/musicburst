@@ -1,32 +1,19 @@
 # -*- coding: utf-8 -*-
-
 """
-This is a skeleton file that can serve as a starting point for a Python
-console script. To run this script uncomment the following lines in the
-``[options.entry_points]`` section in ``setup.cfg``::
-
-    console_scripts =
-         fibonacci = musicburst.skeleton:run
-
-Then run ``pip install .`` (or ``pip install -e .`` for editable mode)
-which will install the command ``fibonacci`` inside your current environment.
-
-Besides console scripts, the header (i.e. until ``_logger``...) of this file can
-also be used as template for Python modules.
-
-Note:
-    This skeleton file can be safely removed if not needed!
-
-References:
-    - https://setuptools.readthedocs.io/en/latest/userguide/entry_point.html
-    - https://pip.pypa.io/en/stable/reference/pip_install
+This is a script that parses EAF files and counts segments of the 'MusicBurst'
+tier, and segments of the 'Source' tier annotated with the value '1'. It takes a
+set of EAF files as input, and produces a CSV file as output, with columns for
+file name, total file length (from beginning of the recording to the end of the
+last annotated segment; the original WAV file may be longer), number of segments
+in the 'MusicBurst' tier, total length of time of 'MusicBurst' tier segments
+summed, number of segments in the 'Source' tier annotated with the value '1',
+and the total length of those segments.
 """
 
 import argparse
 import csv
 import logging
 import os
-import re
 import sys
 import warnings
 
@@ -41,14 +28,10 @@ __author__ = "Michael Richters"
 __copyright__ = "Michael Richters"
 __license__ = "MIT"
 
-_logger = logging.getLogger(__name__)
-
-
-# ---- Python API ----
-# The functions defined in this section can be imported by users in their
-# Python scripts/interactive interpreter, e.g. via
-# `from musicburst.skeleton import fib`,
-# when using this Python module as a library.
+# ==============================================================================
+# Constants
+music_tier_name = 'MusicBurst'
+source_tier_name = 'Source'
 
 # ==============================================================================
 class OutputRecord:
@@ -60,7 +43,7 @@ class OutputRecord:
     header.extend(data_labels)
 
     def __init__(self, filename):
-        self.filename = filename
+        self.filename = os.path.basename(filename).replace('.eaf', '')
         self.data = defaultdict(int)
         return
 
@@ -73,13 +56,21 @@ class OutputRecord:
         values.extend(data_values)
         return values
 
+# ------------------------------------------------------------------------------
+class Error(Exception):
+    """Base class for errors in this module"""
+    pass
 
-# ---- CLI ----
-# The functions defined in this section are wrappers around the main Python
-# API allowing them to be called directly from the terminal as a CLI
-# executable/script.
+class InputError(Error):
+    """Exception raised for errors that occur when reading input
 
+    Attributs:
+        message (string): an description of the error condition
+    """
+    def __init__(self, message):
+        self.message = message
 
+# ==============================================================================
 def parse_args(args):
     """Parse command line parameters
 
@@ -93,7 +84,7 @@ def parse_args(args):
     progname = os.path.basename(sys.argv[0])
 
     parser = argparse.ArgumentParser(
-        description="Generate summary of MUSICBURST tier data in EAF file(s)"
+        description="Generate summary of MusicBurst  tier data in EAF file(s)"
     )
     parser.add_argument(
         '--version',
@@ -118,7 +109,7 @@ def parse_args(args):
         '-o', '--output',
         metavar = '<csv_file>',
         type    = argparse.FileType('w'),
-        default = 'eaf-counts.csv',
+        default = 'musicburst-counts.csv',
         help    = "Write output to <csv_file> (default: '%(default)s')",
     )
     parser.add_argument(
@@ -135,7 +126,7 @@ def parse_args(args):
     )
     return parser.parse_args(args)
 
-
+# ==============================================================================
 def setup_logging(loglevel):
     """Setup basic logging
 
@@ -150,7 +141,7 @@ def setup_logging(loglevel):
         datefmt = "%Y-%m-%d %H:%M:%S",
     )
 
-
+# ==============================================================================
 def setup_output(filename, delimiter):
     """Setup CSV output and write header row
 
@@ -171,12 +162,61 @@ def setup_output(filename, delimiter):
     output.writerow(OutputRecord.header)
     return output
 
+# ==============================================================================
+def collect_music_data(eaf_file):
+    """Collect data from an EAF file
 
+    Args:
+      eaf_file (string): filename of an EAF file to analyze
+
+    Returns:
+      :obj:`OutputRecord`: record containing the output data
+    """
+    logging.info("Processing {}".format(eaf_file))
+    file_id = os.path.basename(eaf_file).replace('.eaf', '')
+
+    eaf = pympi.Elan.Eaf(eaf_file)
+    warnings.filterwarnings('default')
+
+    tier_names = eaf.get_tier_names()
+    logging.debug('All tiers: {}'.format(list(tier_names)))
+
+    output_record = OutputRecord(eaf_file)
+
+    if music_tier_name not in tier_names:
+        raise InputError("Missing {} tier in file {}"
+                         .format(music_tier_name, eaf_file))
+
+    for record in eaf.get_annotation_data_for_tier(music_tier_name):
+        (start, end, value) = record[:3]
+        logging.debug("{} segment: {}"
+                      .format(music_tier_name, (start, end, value)))
+        output_record.data['music segments'] += 1
+        output_record.data['music time'] += (end - start)
+
+    if source_tier_name not in tier_names:
+        logging.warning("Missing source tier in file {}".format(eaf_file))
+    else:
+        for record in eaf.get_annotation_data_for_tier('Source'):
+            (start, end, value) = record[:3]
+            logging.debug("{} segment: {}"
+                          .format(source_tier_name, (start, end, value)))
+            if value != '1':
+                continue
+            output_record.data['singing segments'] += 1
+            output_record.data['singing time'] += (end - start)
+
+    (start, end) = eaf.get_full_time_interval()
+    output_record.data['total time'] = (end - start)
+
+    return output_record
+
+# ==============================================================================
 def main(args):
-    """Wrapper allowing :func:`fib` to be called with string arguments in a CLI fashion
-
-    Instead of returning the value from :func:`fib`, it prints the result to the
-    ``stdout`` in a nicely formated message.
+    """Command-line interface function for the script to parse EAF files for
+    segments in the 'MusicBurst' tier and 'Source' tier. Calls
+    ``collect_music_data()`` for each EAF file specified on the command line,
+    and writes the data to a specified CSV output file.
 
     Args:
       args (List[str]): command line parameters as list of strings
@@ -195,37 +235,11 @@ def main(args):
     output = setup_output(args.output, output_delimiter)
 
     for eaf_file in args.eaf_files:
-        logging.info("Processing {}".format(eaf_file))
-        filename = os.path.basename(eaf_file).replace('.eaf', '')
-
-        eaf = pympi.Elan.Eaf(eaf_file)
-        warnings.filterwarnings('default')
-
-        tier_names = eaf.get_tier_names()
-        logging.debug('All tiers: {}'.format(list(tier_names)))
-
-        output_record = OutputRecord(eaf_file)
-
-        if 'MusicBurst' not in tier_names:
-            logging.warning("Missing MusicBurst tier in file {}".format(eaf_file))
+        try:
+            output_record = collect_music_data(eaf_file)
+        except InputError as err:
+            logging.warning(err.message)
             continue
-
-        for record in eaf.get_annotation_data_for_tier('MusicBurst'):
-            (start, end, value) = record[:3]
-            # logging.debug("{}".format(record))
-            output_record.data['music segments'] += 1
-            output_record.data['music time'] += (end - start)
-
-        if 'Source' not in tier_names:
-            logging.warning("Missing source tier in file {}".format(eaf_file))
-        else:
-            for record in eaf.get_annotation_data_for_tier('Source'):
-                (start, end, value) = record[:3]
-                logging.debug("{}".format(record))
-                if value != '1':
-                    continue
-                output_record.data['singing segments'] += 1
-                output_record.data['singing time'] += (end - start)
 
         output.writerow(output_record.fmt())
 
