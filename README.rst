@@ -2,20 +2,39 @@
 musicburst
 ==========
 
+This is a simple tool for extracting data from EAF files for analysis of the
+``MusicBurst`` and ``Source`` tiers, and writing the output to a CSV file, with
+one row per input file.
 
-This package is processes data about the MUSICBURST tier in EAF files.
+Installation
+============
 
+Clone the repository, then use ``pip`` to install the ``musicburst`` tool::
 
-Description
-===========
+  $ git clone https:://github.com/gedankenexperimenter/musicburst
 
-When I've got more detail about how this works, I'll put it here.
+  $ pip install musicburst
 
+This should result in a ``musicburst`` command line program becoming available
+in your path. In a directory with EAF files containing the target data, then
+run::
 
-.. _pyscaffold-notes:
+  $ musicburst *.eaf
 
-Note
-====
+The output data will be written to the file ``musicburst-counts.csv``,
+containing columns for:
 
-This project has been set up using PyScaffold 4.0.1. For details and usage
-information on PyScaffold see https://pyscaffold.org/.
+- file name
+- total length (until the end of the last annotated segment, which is not
+  necessary the total length of the source WAV file)
+- number of segments in the ``MusicBurst`` tier
+- total length of those ``MusicBurst`` segments
+- number of segments of the ``Source`` tier with the annotation ``1``
+- total length of those ``Source`` tier segments
+
+Notes
+=====
+
+- All time values are in milliseconds.
+- Total length of the recording is not available from the EAF file alone. If you
+  need the true total length, you'll have to get that from the WAV file.
