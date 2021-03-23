@@ -15,9 +15,9 @@ import csv
 import logging
 import os
 import sys
-import warnings
 
 from collections import defaultdict
+from contextlib import redirect_stdout
 
 # pympi-ling is required for parsing of EAF files
 import pympi
@@ -30,8 +30,8 @@ __license__ = "MIT"
 
 # ==============================================================================
 # Constants
-music_tier_name = 'MusicBurst'
-source_tier_name = 'Source'
+MUSIC_TIER_NAME = 'MusicBurst'
+SOURCE_TIER_NAME = 'Source'
 
 # ==============================================================================
 class OutputRecord:
@@ -45,9 +45,10 @@ class OutputRecord:
     def __init__(self, filename):
         self.filename = os.path.basename(filename).replace('.eaf', '')
         self.data = defaultdict(int)
-        return
 
     def fmt(self):
+        """Format the output record, returning a list of values, with zeros replaced by
+        empty strings."""
         values = [self.filename]
         def _blank_zero(entry):
             value = self.data[entry]
@@ -59,7 +60,6 @@ class OutputRecord:
 # ------------------------------------------------------------------------------
 class Error(Exception):
     """Base class for errors in this module"""
-    pass
 
 class InputError(Error):
     """Exception raised for errors that occur when reading input
@@ -68,6 +68,7 @@ class InputError(Error):
         message (string): an description of the error condition
     """
     def __init__(self, message):
+        super().__init__()
         self.message = message
 
 # ==============================================================================
@@ -81,8 +82,6 @@ def parse_args(args):
     Returns:
       :obj:`argparse.Namespace`: command line parameters namespace
     """
-    progname = os.path.basename(sys.argv[0])
-
     parser = argparse.ArgumentParser(
         description="Generate summary of MusicBurst  tier data in EAF file(s)"
     )
@@ -172,35 +171,36 @@ def collect_music_data(eaf_file):
     Returns:
       :obj:`OutputRecord`: record containing the output data
     """
-    logging.info("Processing {}".format(eaf_file))
-    file_id = os.path.basename(eaf_file).replace('.eaf', '')
+    logging.info("Processing %s", eaf_file)
 
-    eaf = pympi.Elan.Eaf(eaf_file)
-    warnings.filterwarnings('default')
+    # pympi prints warnings about EAF versions to STDOUT instead of STDERR. This
+    # gets in the way of CSV output to STDOUT.
+    with redirect_stdout(sys.stderr):
+        eaf = pympi.Elan.Eaf(eaf_file)
 
     tier_names = eaf.get_tier_names()
-    logging.debug('All tiers: {}'.format(list(tier_names)))
+    logging.debug("All tiers: %s", format(list(tier_names)))
 
     output_record = OutputRecord(eaf_file)
 
-    if music_tier_name not in tier_names:
+    if MUSIC_TIER_NAME not in tier_names:
         raise InputError("Missing {} tier in file {}"
-                         .format(music_tier_name, eaf_file))
+                         .format(MUSIC_TIER_NAME, eaf_file))
 
-    for record in eaf.get_annotation_data_for_tier(music_tier_name):
+    for record in eaf.get_annotation_data_for_tier(MUSIC_TIER_NAME):
         (start, end, value) = record[:3]
-        logging.debug("{} segment: {}"
-                      .format(music_tier_name, (start, end, value)))
+        logging.debug("%s segment: %s",
+                      MUSIC_TIER_NAME, format((start, end, value)))
         output_record.data['music segments'] += 1
         output_record.data['music time'] += (end - start)
 
-    if source_tier_name not in tier_names:
-        logging.warning("Missing source tier in file {}".format(eaf_file))
+    if SOURCE_TIER_NAME not in tier_names:
+        logging.warning("Missing source tier in file %s", eaf_file)
     else:
         for record in eaf.get_annotation_data_for_tier('Source'):
             (start, end, value) = record[:3]
-            logging.debug("{} segment: {}"
-                          .format(source_tier_name, (start, end, value)))
+            logging.debug("%s segment: %s",
+                          SOURCE_TIER_NAME, format((start, end, value)))
             if value != '1':
                 continue
             output_record.data['singing segments'] += 1
@@ -243,7 +243,8 @@ def main(args):
 
         output.writerow(output_record.fmt())
 
-    args.output.close()
+    if args.output != sys.stdout:
+        args.output.close()
 
 
 def run():
