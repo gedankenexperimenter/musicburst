@@ -11,9 +11,11 @@ Installation
 
 Clone the repository, then use ``pip`` to install the ``musicburst`` tool::
 
-  $ git clone https:://github.com/gedankenexperimenter/musicburst
+  $ git clone https://github.com/gedankenexperimenter/musicburst
 
-  $ pip install musicburst
+  $ cd musicburst
+
+  $ pip install .
 
 This should result in a ``musicburst`` command line program becoming available
 in your path. In a directory with EAF files containing the target data, then
