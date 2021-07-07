@@ -17,6 +17,11 @@ Clone the repository, then use ``pip`` to install the ``musicburst`` tool::
 
   $ pip install .
 
+On Windows, if you're using `pyenv`, you may also need to run this command in
+order to get the `musicburst` command in your path::
+
+  $ pyenv rehash
+
 This should result in a ``musicburst`` command line program becoming available
 in your path. In a directory with EAF files containing the target data, then
 run::
